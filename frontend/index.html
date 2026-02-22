@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ICD-10 MedGemma Validator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .drop-zone { border: 2px dashed #cbd5e1; transition: border-color 0.2s, background-color 0.2s; }
+    .drop-zone.active { border-color: #3b82f6; background-color: #eff6ff; }
+    .confidence-bar { transition: width 0.6s ease-out; }
+    .fade-in { animation: fadeIn 0.4s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .spinner { border: 3px solid #e2e8f0; border-top: 3px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .code-badge { font-family: 'Courier New', monospace; }
+    .risk-none { background: #d1fae5; color: #065f46; }
+    .risk-low { background: #fef9c3; color: #854d0e; }
+    .risk-medium { background: #ffedd5; color: #9a3412; }
+    .risk-high { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+    <div class="max-w-7xl mx-auto flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold text-gray-900">ICD-10 MedGemma Validator</h1>
+        <p class="text-xs text-gray-500">Multimodal Coding Validation &amp; Fraud Detection</p>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <span id="apiStatus" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">Checking...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- LEFT: Input Panel -->
+    <div class="space-y-4">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Clinical Note</h2>
+        <textarea
+          id="clinicalNote"
+          rows="8"
+          placeholder="Paste clinical note here...&#10;&#10;Example: 58-year-old male with 3 days of high fever (39.4°C), productive cough with yellow-green sputum, right-sided pleuritic chest pain, and worsening dyspnea. SpO2 88% on room air. Auscultation reveals decreased breath sounds and crackles in right lower lobe."
+          class="w-full text-sm text-gray-700 border border-gray-200 rounded-lg p-3 resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none placeholder-gray-400"
+        ></textarea>
+      </div>
+
+      <!-- Image Upload -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Medical Image (Optional)</h2>
+        <div
+          id="dropZone"
+          class="drop-zone rounded-lg p-6 text-center cursor-pointer"
+          onclick="document.getElementById('imageInput').click()"
+        >
+          <div id="dropZoneContent">
+            <svg class="w-10 h-10 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            <p class="text-sm text-gray-500">Drop X-ray or scan here, or <span class="text-blue-600 font-medium">click to upload</span></p>
+            <p class="text-xs text-gray-400 mt-1">JPEG, PNG, DICOM supported</p>
+          </div>
+          <img id="imagePreview" class="hidden max-h-48 mx-auto rounded-lg object-contain" alt="Preview" />
+          <p id="imageName" class="hidden text-xs text-gray-500 mt-2"></p>
+        </div>
+        <input type="file" id="imageInput" accept="image/*" class="hidden" onchange="handleImageUpload(event)" />
+        <button id="clearImage" class="hidden mt-2 text-xs text-red-500 hover:text-red-700" onclick="clearImage()">Remove image</button>
+      </div>
+
+      <!-- Existing Code -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Existing ICD-10 Code (Optional)</h2>
+        <div class="flex gap-2">
+          <input
+            type="text"
+            id="existingCode"
+            placeholder="e.g. J06.9"
+            class="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none uppercase font-mono"
+            maxlength="10"
+          />
+          <button
+            onclick="lookupCode()"
+            class="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >Lookup</button>
+        </div>
+        <div id="codeLookupResult" class="hidden mt-2 text-xs text-gray-600 bg-gray-50 rounded-lg p-2"></div>
+      </div>
+
+      <!-- Analyze Button -->
+      <button
+        id="analyzeBtn"
+        onclick="analyze()"
+        class="w-full py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 active:scale-98 transition-all shadow-sm"
+      >
+        Analyze with MedGemma
+      </button>
+    </div>
+
+    <!-- RIGHT: Results Panel -->
+    <div id="resultsPanel">
+
+      <!-- Empty state -->
+      <div id="emptyState" class="bg-white rounded-xl shadow-sm border border-gray-200 p-10 text-center">
+        <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        <p class="text-gray-400 text-sm">Enter a clinical note and click Analyze to see results</p>
+      </div>
+
+      <!-- Loading state -->
+      <div id="loadingState" class="hidden bg-white rounded-xl shadow-sm border border-gray-200 p-10 text-center">
+        <div class="spinner mx-auto mb-4"></div>
+        <p class="text-gray-600 text-sm font-medium" id="loadingText">Extracting clinical entities...</p>
+        <p class="text-gray-400 text-xs mt-1">MedGemma is analyzing your input</p>
+      </div>
+
+      <!-- Results -->
+      <div id="results" class="hidden space-y-4 fade-in">
+
+        <!-- Suggested Code Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div class="flex items-start justify-between">
+            <div>
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Suggested ICD-10 Code</p>
+              <div class="flex items-center gap-3">
+                <span id="suggestedCode" class="code-badge text-3xl font-bold text-blue-700"></span>
+                <div>
+                  <p id="suggestedDescription" class="text-sm font-medium text-gray-800"></p>
+                  <p id="suggestedCategory" class="text-xs text-gray-500"></p>
+                </div>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="text-xs text-gray-500">Avg Reimbursement</p>
+              <p id="suggestedReimbursement" class="text-lg font-bold text-green-700"></p>
+            </div>
+          </div>
+
+          <!-- Confidence Bar -->
+          <div class="mt-4">
+            <div class="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Confidence</span>
+              <span id="confidenceText" class="font-medium"></span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-2">
+              <div id="confidenceBar" class="confidence-bar h-2 rounded-full bg-blue-500" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mismatch Alert -->
+        <div id="mismatchAlert" class="hidden bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+          <div class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <div>
+              <p class="text-sm font-semibold text-yellow-800">Mismatch Detected</p>
+              <p id="mismatchReason" class="text-sm text-yellow-700 mt-1"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fraud Risk + Financial Impact Row -->
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Fraud Risk</p>
+            <div class="flex items-center gap-2">
+              <span id="fraudBadge" class="px-3 py-1 rounded-full text-sm font-bold uppercase"></span>
+              <span id="riskType" class="text-xs text-gray-500"></span>
+            </div>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Financial Impact</p>
+            <p id="financialImpact" class="text-2xl font-bold text-gray-800"></p>
+            <p id="financialDirection" class="text-xs text-gray-500"></p>
+          </div>
+        </div>
+
+        <!-- Clinical Reasoning -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Clinical Reasoning</p>
+          <p id="reasoning" class="text-sm text-gray-700 leading-relaxed"></p>
+        </div>
+
+        <!-- Evidence -->
+        <div id="evidenceCard" class="hidden bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Audit Evidence</p>
+          <p id="evidence" class="text-sm text-gray-700 leading-relaxed"></p>
+        </div>
+
+        <!-- Audit Recommendation -->
+        <div id="auditCard" class="hidden bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Audit Recommendation</p>
+          <p id="auditRecommendation" class="text-sm text-gray-700 leading-relaxed"></p>
+        </div>
+
+        <!-- Extracted Entities -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Extracted Clinical Entities</p>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <p class="text-xs text-gray-500 mb-1">Symptoms</p>
+              <div id="symptomTags" class="flex flex-wrap gap-1"></div>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 mb-1">Image Findings</p>
+              <div id="findingTags" class="flex flex-wrap gap-1"></div>
+            </div>
+          </div>
+          <div class="flex gap-4 mt-3">
+            <div>
+              <p class="text-xs text-gray-500">Severity</p>
+              <span id="severityBadge" class="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700"></span>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500">Body System</p>
+              <span id="bodySystemBadge" class="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom: Candidate Codes Table -->
+  <div id="candidateSection" class="hidden max-w-7xl mx-auto px-4 pb-8">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+        Candidate Codes Considered
+      </h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-xs text-gray-500 border-b border-gray-100">
+              <th class="text-left py-2 pr-4">Code</th>
+              <th class="text-left py-2 pr-4">Description</th>
+              <th class="text-left py-2 pr-4">Category</th>
+              <th class="text-left py-2 pr-4">Severity</th>
+              <th class="text-left py-2 pr-4">Reimbursement</th>
+              <th class="text-left py-2">Graph Score</th>
+            </tr>
+          </thead>
+          <tbody id="candidateTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:8000';
+    let selectedImageFile = null;
+
+    // Check API health on load
+    async function checkHealth() {
+      try {
+        const resp = await fetch(`${API_BASE}/health`);
+        const data = await resp.json();
+        const el = document.getElementById('apiStatus');
+        if (resp.ok) {
+          el.textContent = `Connected · ${data.total_icd10_codes} codes`;
+          el.className = 'text-xs px-2 py-1 rounded-full bg-green-100 text-green-700';
+        } else {
+          throw new Error();
+        }
+      } catch {
+        const el = document.getElementById('apiStatus');
+        el.textContent = 'API offline';
+        el.className = 'text-xs px-2 py-1 rounded-full bg-red-100 text-red-700';
+      }
+    }
+    checkHealth();
+
+    // Drag-and-drop
+    const dropZone = document.getElementById('dropZone');
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('active'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('active');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) setImage(file);
+    });
+
+    function handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (file) setImage(file);
+    }
+
+    function setImage(file) {
+      selectedImageFile = file;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const preview = document.getElementById('imagePreview');
+        preview.src = e.target.result;
+        preview.classList.remove('hidden');
+        document.getElementById('dropZoneContent').classList.add('hidden');
+        document.getElementById('imageName').textContent = file.name;
+        document.getElementById('imageName').classList.remove('hidden');
+        document.getElementById('clearImage').classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearImage() {
+      selectedImageFile = null;
+      document.getElementById('imagePreview').classList.add('hidden');
+      document.getElementById('dropZoneContent').classList.remove('hidden');
+      document.getElementById('imageName').classList.add('hidden');
+      document.getElementById('clearImage').classList.add('hidden');
+      document.getElementById('imageInput').value = '';
+    }
+
+    async function lookupCode() {
+      const code = document.getElementById('existingCode').value.trim().toUpperCase();
+      if (!code) return;
+      try {
+        const resp = await fetch(`${API_BASE}/validate/${code}`);
+        const el = document.getElementById('codeLookupResult');
+        if (resp.ok) {
+          const data = await resp.json();
+          el.innerHTML = `<strong>${data.code}</strong>: ${data.description} &mdash; <em>${data.category}</em> &mdash; <strong>$${data.avg_reimbursement_usd.toLocaleString()}</strong>`;
+          el.classList.remove('hidden');
+        } else {
+          el.textContent = `Code "${code}" not found in database.`;
+          el.classList.remove('hidden');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function setLoading(msg) {
+      document.getElementById('emptyState').classList.add('hidden');
+      document.getElementById('results').classList.add('hidden');
+      document.getElementById('candidateSection').classList.add('hidden');
+      document.getElementById('loadingState').classList.remove('hidden');
+      document.getElementById('loadingText').textContent = msg;
+    }
+
+    function showError(msg) {
+      document.getElementById('loadingState').classList.add('hidden');
+      document.getElementById('emptyState').classList.remove('hidden');
+      document.getElementById('emptyState').innerHTML =
+        `<div class="text-red-500"><p class="font-semibold mb-1">Analysis Failed</p><p class="text-sm">${msg}</p></div>`;
+    }
+
+    async function analyze() {
+      const note = document.getElementById('clinicalNote').value.trim();
+      if (!note) {
+        alert('Please enter a clinical note.');
+        return;
+      }
+
+      setLoading('Extracting clinical entities...');
+
+      const btn = document.getElementById('analyzeBtn');
+      btn.disabled = true;
+      btn.textContent = 'Analyzing...';
+
+      try {
+        const formData = new FormData();
+        formData.append('clinical_note', note);
+        if (selectedImageFile) formData.append('image', selectedImageFile);
+        const code = document.getElementById('existingCode').value.trim();
+        if (code) formData.append('existing_code', code.toUpperCase());
+
+        setTimeout(() => {
+          document.getElementById('loadingText').textContent = 'Running MedGemma multimodal analysis...';
+        }, 1500);
+
+        const resp = await fetch(`${API_BASE}/analyze`, { method: 'POST', body: formData });
+
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+
+        const data = await resp.json();
+        renderResults(data);
+
+      } catch (e) {
+        showError(e.message || 'Connection failed. Is the backend running?');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Analyze with MedGemma';
+      }
+    }
+
+    function renderResults(data) {
+      document.getElementById('loadingState').classList.add('hidden');
+      document.getElementById('results').classList.remove('hidden');
+      document.getElementById('results').classList.add('fade-in');
+      document.getElementById('candidateSection').classList.remove('hidden');
+
+      // Suggested code
+      const suggested = data.suggested_code || '';
+      document.getElementById('suggestedCode').textContent = suggested;
+
+      // Get code details
+      fetch(`${API_BASE}/validate/${suggested}`)
+        .then(r => r.json())
+        .then(d => {
+          document.getElementById('suggestedDescription').textContent = d.description || '';
+          document.getElementById('suggestedCategory').textContent =
+            `${d.category || ''} · ${d.severity || ''}`;
+          document.getElementById('suggestedReimbursement').textContent =
+            d.avg_reimbursement_usd ? `$${d.avg_reimbursement_usd.toLocaleString()}` : '';
+        }).catch(() => {
+          document.getElementById('suggestedDescription').textContent = suggested;
+        });
+
+      // Confidence
+      const conf = parseFloat(data.confidence) || 0;
+      document.getElementById('confidenceText').textContent = `${Math.round(conf * 100)}%`;
+      setTimeout(() => {
+        document.getElementById('confidenceBar').style.width = `${conf * 100}%`;
+        document.getElementById('confidenceBar').className =
+          'confidence-bar h-2 rounded-full ' +
+          (conf >= 0.8 ? 'bg-green-500' : conf >= 0.5 ? 'bg-yellow-500' : 'bg-red-500');
+      }, 100);
+
+      // Mismatch
+      if (data.mismatch_detected) {
+        document.getElementById('mismatchAlert').classList.remove('hidden');
+        document.getElementById('mismatchReason').textContent = data.mismatch_reason || '';
+      } else {
+        document.getElementById('mismatchAlert').classList.add('hidden');
+      }
+
+      // Fraud risk
+      const risk = (data.fraud_risk || 'none').toLowerCase();
+      const fraudBadge = document.getElementById('fraudBadge');
+      fraudBadge.textContent = risk.toUpperCase();
+      fraudBadge.className = `px-3 py-1 rounded-full text-sm font-bold uppercase risk-${risk}`;
+      document.getElementById('riskType').textContent = data.risk_type || '';
+
+      // Financial impact
+      const impact = parseInt(data.financial_impact_usd) || 0;
+      document.getElementById('financialImpact').textContent =
+        impact > 0 ? `$${impact.toLocaleString()}` : '$0';
+      if (data.risk_type === 'upcoding') {
+        document.getElementById('financialDirection').textContent = 'Potential overbilling';
+        document.getElementById('financialImpact').className = 'text-2xl font-bold text-red-700';
+      } else if (data.risk_type === 'downcoding') {
+        document.getElementById('financialDirection').textContent = 'Potential revenue loss';
+        document.getElementById('financialImpact').className = 'text-2xl font-bold text-orange-700';
+      } else {
+        document.getElementById('financialDirection').textContent = '';
+        document.getElementById('financialImpact').className = 'text-2xl font-bold text-gray-800';
+      }
+
+      // Reasoning
+      document.getElementById('reasoning').textContent = data.reasoning || 'No reasoning provided.';
+
+      // Evidence
+      if (data.evidence) {
+        document.getElementById('evidence').textContent = data.evidence;
+        document.getElementById('evidenceCard').classList.remove('hidden');
+      } else {
+        document.getElementById('evidenceCard').classList.add('hidden');
+      }
+
+      // Audit recommendation
+      if (data.audit_recommendation && data.audit_recommendation !== 'No action required.') {
+        document.getElementById('auditRecommendation').textContent = data.audit_recommendation;
+        document.getElementById('auditCard').classList.remove('hidden');
+      } else {
+        document.getElementById('auditCard').classList.add('hidden');
+      }
+
+      // Extracted entities
+      const entities = data.extracted_entities || {};
+      renderTags('symptomTags', entities.symptoms || [], 'bg-purple-100 text-purple-700');
+      renderTags('findingTags', entities.image_findings || [], 'bg-blue-100 text-blue-700');
+      document.getElementById('severityBadge').textContent = entities.severity || '—';
+      document.getElementById('bodySystemBadge').textContent = entities.body_system || '—';
+
+      // Candidate codes table
+      const tbody = document.getElementById('candidateTableBody');
+      tbody.innerHTML = '';
+      const candidates = data.candidate_codes || [];
+      candidates.forEach(c => {
+        const isSuggested = c.code === data.suggested_code;
+        const tr = document.createElement('tr');
+        tr.className = `border-b border-gray-50 ${isSuggested ? 'bg-blue-50' : 'hover:bg-gray-50'}`;
+        const scorePercent = Math.round((c.confidence || 0) * 100);
+        tr.innerHTML = `
+          <td class="py-2 pr-4">
+            <span class="code-badge font-bold ${isSuggested ? 'text-blue-700' : 'text-gray-700'}">${c.code}</span>
+            ${isSuggested ? '<span class="ml-1 text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded">Selected</span>' : ''}
+          </td>
+          <td class="py-2 pr-4 text-gray-700 max-w-xs truncate" title="${c.description || ''}">${c.description || ''}</td>
+          <td class="py-2 pr-4 text-gray-500 text-xs capitalize">${c.category || ''}</td>
+          <td class="py-2 pr-4 text-xs"><span class="px-2 py-0.5 rounded-full ${severityClass(c.severity)}">${c.severity || ''}</span></td>
+          <td class="py-2 pr-4 text-gray-700">$${(c.avg_reimbursement_usd || 0).toLocaleString()}</td>
+          <td class="py-2">
+            <div class="flex items-center gap-2">
+              <div class="w-20 bg-gray-100 rounded-full h-1.5">
+                <div class="h-1.5 rounded-full bg-blue-500" style="width:${scorePercent}%"></div>
+              </div>
+              <span class="text-xs text-gray-500">${scorePercent}%</span>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderTags(containerId, items, colorClass) {
+      const el = document.getElementById(containerId);
+      el.innerHTML = '';
+      if (!items.length) {
+        el.innerHTML = '<span class="text-xs text-gray-400">None detected</span>';
+        return;
+      }
+      items.forEach(item => {
+        const span = document.createElement('span');
+        span.className = `text-xs px-2 py-0.5 rounded-full ${colorClass}`;
+        span.textContent = item.replace(/_/g, ' ');
+        el.appendChild(span);
+      });
+    }
+
+    function severityClass(severity) {
+      return severity === 'severe' ? 'bg-red-100 text-red-700' :
+             severity === 'moderate' ? 'bg-yellow-100 text-yellow-700' :
+             'bg-green-100 text-green-700';
+    }
+
+    // Enter key in code field
+    document.getElementById('existingCode').addEventListener('keydown', e => {
+      if (e.key === 'Enter') lookupCode();
+    });
+  </script>
+</body>
+</html>

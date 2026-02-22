@@ -1,0 +1,682 @@
+# =============================================================================
+# ICD-10 Causal Rules — Single source of truth for fraud scoring
+# =============================================================================
+# Loaded at startup by knowledge_engine.py — no Python changes needed to add
+# or modify a rule. Edit this file, restart backend.
+#
+# Fields:
+#   visual_required_any   OR logic — at least ONE must be present (weight 0.4)
+#   visual_required_all   AND logic — ALL must be present (weight 0.5)
+#   visual_supporting     bonus findings — fraction boosts score (weight 0.1)
+#   fraud_differential    the single ICD code most commonly miscoded instead
+#   minimum_causal_score  threshold below which fraud is flagged (0.0–1.0)
+#   source                expert_validated | medgemma_generated | umls_snomed
+#   validated             true = clinician reviewed; false = auto-generated
+#                         (false applies a -0.15 confidence penalty at runtime
+#                          so auto-generated rules never over-flag fraud)
+#
+# To add a new code: append an entry below and restart the backend.
+# To seed new codes automatically: python scripts/seed_causal_rules.py --codes J15.1 J15.6
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RESPIRATORY
+# ─────────────────────────────────────────────────────────────────────────────
+
+J18.1:
+  description: "Lobar pneumonia, unspecified organism"
+  anatomical_location: "lung — right or left lower lobe"
+  causal_necessity: >
+    Lobar consolidation or air bronchograms are radiographic hallmarks of
+    bacterial lobar pneumonia; without them the diagnosis cannot be
+    radiographically confirmed.
+  visual_required_any: [lobar_consolidation, air_bronchograms]
+  visual_required_all: []
+  visual_supporting: [pleural_effusion, dense_opacification]
+  alternative_diagnoses: [J18.9, J06.9, J12.9]
+  fraud_differential: "J06.9"
+  minimum_causal_score: 0.6
+  voice_keywords: [fever, cough, chest_pain, shortness_of_breath, sputum, pneumonia, consolidation, productive_cough, dyspnea, lobar, infiltrate, opacity, purulent_sputum, pleuritic_chest_pain, hypoxia, high_fever, respiratory_distress, tachypnea, pleurisy, air_bronchograms, lobar_consolidation]
+  source: expert_validated
+  validated: true
+
+J18.9:
+  description: "Unspecified pneumonia"
+  anatomical_location: "lung — bilateral or unspecified"
+  causal_necessity: >
+    Pulmonary infiltrates, consolidation, or diffuse airspace disease must be
+    present to code pneumonia.
+  visual_required_any: [pulmonary_infiltrates, consolidation, airspace_disease, lobar_consolidation]
+  visual_required_all: []
+  visual_supporting: [fever_clinical, bilateral_opacities]
+  alternative_diagnoses: [J18.1, J06.9, J22]
+  fraud_differential: "J06.9"
+  minimum_causal_score: 0.6
+  voice_keywords: [fever, cough, shortness_of_breath]
+  source: expert_validated
+  validated: true
+
+J06.9:
+  description: "Acute upper respiratory infection, unspecified"
+  anatomical_location: "upper airway"
+  causal_necessity: >
+    Clear lung fields or absence of pulmonary consolidation is required to code
+    upper respiratory infection. Any lower tract finding rules this code out.
+  visual_required_any: [normal_chest, clear_lung_fields, no_acute_findings]
+  visual_required_all: []
+  visual_supporting: [clear_sinuses]
+  alternative_diagnoses: [J18.9, J18.1, J20.9]
+  fraud_differential: "J18.1"
+  minimum_causal_score: 0.6
+  voice_keywords: [runny_nose, sore_throat, mild_cough, cold, upper_respiratory, rhinorrhea, nasal_congestion, pharyngitis, sneezing, mild_fever, low_grade_fever, no_consolidation, clear_chest, no_pneumonia]
+  source: expert_validated
+  validated: true
+
+J45.20:
+  description: "Mild intermittent asthma, uncomplicated"
+  anatomical_location: "bronchial airways — bilateral"
+  causal_necessity: >
+    Clear lung fields with at most mild hyperinflation; symptoms less than 2
+    days per week, no nocturnal symptoms, and peak flow ≥80% predicted are
+    required for mild intermittent classification.
+  visual_required_any: [clear_lung_fields, normal_diaphragms, mild_hyperinflation, no_acute_findings]
+  visual_required_all: []
+  visual_supporting: [normal_cardiac_size]
+  alternative_diagnoses: [J45.30, J45.40, J45.50]
+  fraud_differential: "J45.50"
+  minimum_causal_score: 0.6
+  voice_keywords: [occasional_wheeze, mild_shortness_of_breath]
+  source: expert_validated
+  validated: true
+
+J45.50:
+  description: "Severe persistent asthma, uncomplicated"
+  anatomical_location: "bronchial airways — bilateral with air trapping"
+  causal_necessity: >
+    Radiographic hyperinflation with flattened diaphragms and air trapping is
+    required. Clinically: daily symptoms, frequent nocturnal episodes, and peak
+    flow less than 60% predicted must be documented.
+  visual_required_any: [air_trapping, flattened_diaphragms, severe_hyperinflation]
+  visual_required_all: [hyperinflation]
+  visual_supporting: [peribronchial_cuffing, increased_lung_markings]
+  alternative_diagnoses: [J45.20, J45.30, J45.40]
+  fraud_differential: "J45.20"
+  minimum_causal_score: 0.6
+  voice_keywords: [constant_wheeze, cant_breathe, daily_symptoms, nighttime_symptoms, wheezing, bronchospasm, dyspnea, air_trapping, barrel_chest, prolonged_expiration, hyperinflation, asthma, bronchial]
+  source: expert_validated
+  validated: true
+
+J20.9:
+  description: "Acute bronchitis, unspecified"
+  anatomical_location: "bronchial tree"
+  causal_necessity: >
+    Acute bronchitis shows bronchial wall thickening or peribronchial
+    infiltrates without lobar consolidation.
+  visual_required_any: [bronchial_thickening, peribronchial_infiltrates, normal_chest]
+  visual_required_all: []
+  visual_supporting: [increased_bronchial_markings]
+  alternative_diagnoses: [J18.9, J06.9, J22]
+  fraud_differential: "J18.1"
+  minimum_causal_score: 0.6
+  voice_keywords: [cough, mucus, wheezing]
+  source: expert_validated
+  validated: true
+
+J22:
+  description: "Unspecified acute lower respiratory infection"
+  anatomical_location: "lower respiratory tract"
+  causal_necessity: >
+    Lower respiratory involvement (infiltrates, bronchial changes) without
+    specific lobar consolidation pattern.
+  visual_required_any: [lower_lobe_infiltrates, bronchial_thickening, perihilar_haziness]
+  visual_required_all: []
+  visual_supporting: [mild_airspace_disease]
+  alternative_diagnoses: [J18.9, J20.9]
+  fraud_differential: "J18.1"
+  minimum_causal_score: 0.6
+  voice_keywords: [cough, fever, shortness_of_breath]
+  source: expert_validated
+  validated: true
+
+J90:
+  description: "Pleural effusion"
+  anatomical_location: "pleural space"
+  causal_necessity: >
+    Blunting of costophrenic angle or layering fluid on lateral decubitus view
+    must be visible radiographically.
+  visual_required_any: [pleural_effusion, costophrenic_blunting, layering_fluid]
+  visual_required_all: []
+  visual_supporting: [mediastinal_shift]
+  alternative_diagnoses: [J94.8, I50.1]
+  fraud_differential: "J18.9"
+  minimum_causal_score: 0.6
+  voice_keywords: [shortness_of_breath, chest_heaviness]
+  source: expert_validated
+  validated: true
+
+J93.1:
+  description: "Spontaneous tension pneumothorax"
+  anatomical_location: "pleural space — unilateral"
+  causal_necessity: >
+    Visceral pleural line with absent lung markings peripheral to it, and
+    contralateral mediastinal shift are diagnostic.
+  visual_required_any: [visceral_pleural_line, absent_lung_markings, pneumothorax]
+  visual_required_all: []
+  visual_supporting: [mediastinal_shift, tracheal_deviation]
+  alternative_diagnoses: [J93.0, J94.8]
+  fraud_differential: "J18.9"
+  minimum_causal_score: 0.6
+  voice_keywords: [sudden_chest_pain, cant_breathe, stabbing_pain]
+  source: expert_validated
+  validated: true
+
+J96.0:
+  description: "Acute respiratory failure with hypoxia"
+  anatomical_location: "lungs — bilateral"
+  causal_necessity: >
+    Bilateral pulmonary infiltrates (ARDS pattern) with documented hypoxia
+    PaO2/FiO2 less than 300 or SpO2 less than 90% are required.
+  visual_required_any: [bilateral_infiltrates, ards_pattern, diffuse_airspace_disease]
+  visual_required_all: []
+  visual_supporting: [bilateral_pleural_effusions, cardiomegaly]
+  alternative_diagnoses: [J96.1, J18.9]
+  fraud_differential: "J22"
+  minimum_causal_score: 0.6
+  voice_keywords: [cant_breathe_at_rest, oxygen_required]
+  source: expert_validated
+  validated: true
+
+J96.1:
+  description: "Chronic respiratory failure with hypoxia"
+  anatomical_location: "lungs — bilateral"
+  causal_necessity: >
+    Chronic hypoxia on home oxygen, with hyperinflation or fibrotic changes on
+    CXR, documented over months.
+  visual_required_any: [hyperinflation, pulmonary_fibrosis, increased_lung_markings]
+  visual_required_all: []
+  visual_supporting: [flattened_diaphragms, barrel_chest]
+  alternative_diagnoses: [J96.0, J44.1]
+  fraud_differential: "J22"
+  minimum_causal_score: 0.6
+  voice_keywords: [always_short_of_breath, home_oxygen]
+  source: expert_validated
+  validated: true
+
+J44.1:
+  description: "COPD with acute exacerbation"
+  anatomical_location: "lungs — bilateral with hyperinflation"
+  causal_necessity: >
+    Known COPD with radiographic hyperinflation and flattened diaphragms;
+    acute exacerbation documented clinically.
+  visual_required_any: [hyperinflation, flattened_diaphragms, air_trapping]
+  visual_required_all: []
+  visual_supporting: [increased_ap_diameter, bullae]
+  alternative_diagnoses: [J44.0, J18.9]
+  fraud_differential: "J18.9"
+  minimum_causal_score: 0.6
+  voice_keywords: [copd, worse_breathing, increased_secretions]
+  source: expert_validated
+  validated: true
+
+J09.X9:
+  description: "Influenza due to identified novel influenza A virus"
+  anatomical_location: "upper and lower respiratory tract"
+  causal_necessity: >
+    Positive influenza rapid test or PCR, with systemic symptoms. CXR may be
+    normal or show bilateral viral pneumonia pattern.
+  visual_required_any: [normal_chest, bilateral_interstitial_infiltrates, viral_pneumonia_pattern]
+  visual_required_all: []
+  visual_supporting: [perihilar_infiltrates]
+  alternative_diagnoses: [J10.1, J18.9]
+  fraud_differential: "J18.9"
+  minimum_causal_score: 0.6
+  voice_keywords: [flu, influenza, body_aches, high_fever]
+  source: expert_validated
+  validated: true
+
+J12.9:
+  description: "Viral pneumonia, unspecified"
+  anatomical_location: "lungs — bilateral patchy"
+  causal_necessity: >
+    Bilateral interstitial or reticular infiltrates on CXR consistent with
+    viral pneumonia; bacterial consolidation absent.
+  visual_required_any: [bilateral_interstitial_infiltrates, reticular_pattern, ground_glass_opacity]
+  visual_required_all: []
+  visual_supporting: [perihilar_distribution]
+  alternative_diagnoses: [J18.9, J18.1]
+  fraud_differential: "J18.1"
+  minimum_causal_score: 0.6
+  voice_keywords: [viral_infection, covid, dry_cough]
+  source: expert_validated
+  validated: true
+
+J13:
+  description: "Pneumonia due to Streptococcus pneumoniae"
+  anatomical_location: "lung — lobar or segmental"
+  causal_necessity: >
+    Lobar or segmental consolidation with sputum or blood culture positive for
+    S. pneumoniae.
+  visual_required_any: [lobar_consolidation, segmental_consolidation, air_bronchograms]
+  visual_required_all: []
+  visual_supporting: [pleural_effusion]
+  alternative_diagnoses: [J18.1, J18.9]
+  fraud_differential: "J06.9"
+  minimum_causal_score: 0.6
+  voice_keywords: [lobar_pneumonia, strep_pneumonia, fever_cough]
+  source: expert_validated
+  validated: true
+
+J18.0:
+  description: "Bronchopneumonia, unspecified organism"
+  anatomical_location: "lung — bilateral patchy/multifocal"
+  causal_necessity: >
+    Multifocal patchy consolidation in a bilateral distribution rather than
+    lobar pattern.
+  visual_required_any: [patchy_consolidation, multifocal_infiltrates, bilateral_lower_lobe_infiltrates]
+  visual_required_all: []
+  visual_supporting: []
+  alternative_diagnoses: [J18.1, J18.9]
+  fraud_differential: "J06.9"
+  minimum_causal_score: 0.6
+  voice_keywords: [pneumonia, fever, bilateral_infection]
+  source: expert_validated
+  validated: true
+
+J98.11:
+  description: "Atelectasis"
+  anatomical_location: "lung — one or more lobes"
+  causal_necessity: >
+    Volume loss with displacement of fissures, elevated hemidiaphragm, or
+    mediastinal shift toward the collapsed lobe.
+  visual_required_any: [atelectasis, subsegmental_atelectasis, lobar_collapse, volume_loss]
+  visual_required_all: []
+  visual_supporting: [mediastinal_shift, elevated_hemidiaphragm]
+  alternative_diagnoses: [J18.1, J93.1]
+  fraud_differential: "J18.1"
+  minimum_causal_score: 0.6
+  voice_keywords: [shortness_of_breath, post_surgical, collapsed_lung]
+  source: expert_validated
+  validated: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CARDIOVASCULAR
+# ─────────────────────────────────────────────────────────────────────────────
+
+I50.1:
+  description: "Left ventricular failure, unspecified"
+  anatomical_location: "heart and lungs — bilateral vascular congestion"
+  causal_necessity: >
+    Cardiomegaly with Kerley B lines and vascular redistribution is the
+    radiographic triad of left ventricular failure. Without cardiomegaly, this
+    code cannot be supported radiographically.
+  visual_required_any: [kerley_b_lines, pulmonary_edema, pleural_effusions]
+  visual_required_all: [cardiomegaly]
+  visual_supporting: [vascular_redistribution, perihilar_haziness]
+  alternative_diagnoses: [I50.9, I50.32, I50.40]
+  fraud_differential: "J18.1"
+  minimum_causal_score: 0.6
+  voice_keywords: [cant_sleep_lying_flat, leg_swelling, shortness_of_breath, wake_up_gasping, dyspnea, orthopnea, bilateral_edema, peripheral_edema, edema, pulmonary_edema, cardiomegaly, heart_failure, congestive]
+  source: expert_validated
+  validated: true
+
+I50.9:
+  description: "Heart failure, unspecified"
+  anatomical_location: "heart — bilateral"
+  causal_necessity: >
+    Cardiomegaly or enlarged cardiac silhouette must be present. Some vascular
+    congestion is expected.
+  visual_required_any: [cardiomegaly, enlarged_cardiac_silhouette, pulmonary_vascular_congestion]
+  visual_required_all: []
+  visual_supporting: [pleural_effusions, kerley_b_lines]
+  alternative_diagnoses: [I50.1, I50.9, I51.7]
+  fraud_differential: "J18.9"
+  minimum_causal_score: 0.6
+  voice_keywords: [swollen_legs, fatigue, shortness_of_breath]
+  source: expert_validated
+  validated: true
+
+I21.0:
+  description: "ST elevation MI of anterior wall"
+  anatomical_location: "heart — anterior wall"
+  causal_necessity: >
+    ST elevation in precordial leads on ECG is mandatory. CXR may show
+    cardiomegaly or pulmonary edema in large MI.
+  visual_required_any: [cardiomegaly, pulmonary_edema, normal_chest]
+  visual_required_all: []
+  visual_supporting: [pleural_effusions]
+  alternative_diagnoses: [I21.1, I21.9, I25.10]
+  fraud_differential: "I25.10"
+  minimum_causal_score: 0.3
+  voice_keywords: [chest_pain, crushing_pressure, left_arm_pain, jaw_pain, sweating]
+  source: expert_validated
+  validated: true
+
+I21.9:
+  description: "Acute myocardial infarction, unspecified"
+  anatomical_location: "heart"
+  causal_necessity: >
+    Elevated troponin and ECG changes required. CXR may show pulmonary edema
+    in severe cases.
+  visual_required_any: [normal_chest, cardiomegaly, pulmonary_edema]
+  visual_required_all: []
+  visual_supporting: [pleural_effusions]
+  alternative_diagnoses: [I21.0, I21.1, I25.10]
+  fraud_differential: "I25.10"
+  minimum_causal_score: 0.3
+  voice_keywords: [chest_pain, heart_attack]
+  source: expert_validated
+  validated: true
+
+I25.10:
+  description: "Atherosclerotic heart disease"
+  anatomical_location: "coronary arteries"
+  causal_necessity: >
+    Coronary artery disease documented by angiography or imaging. CXR may be
+    normal or show cardiomegaly.
+  visual_required_any: [normal_chest, cardiomegaly, aortic_calcification]
+  visual_required_all: []
+  visual_supporting: [aortic_elongation]
+  alternative_diagnoses: [I21.9, I20.0]
+  fraud_differential: "I21.9"
+  minimum_causal_score: 0.3
+  voice_keywords: [chest_tightness_exertion, known_heart_disease]
+  source: expert_validated
+  validated: true
+
+I10:
+  description: "Essential (primary) hypertension"
+  anatomical_location: "cardiovascular system"
+  causal_necessity: >
+    Blood pressure ≥130/80 mmHg on multiple readings. CXR may show
+    cardiomegaly from hypertensive heart disease.
+  visual_required_any: [normal_chest, cardiomegaly, aortic_elongation]
+  visual_required_all: []
+  visual_supporting: [aortic_knob_prominence]
+  alternative_diagnoses: [I11.9, I12.9]
+  fraud_differential: "I50.9"
+  minimum_causal_score: 0.3
+  voice_keywords: [high_blood_pressure, headache]
+  source: expert_validated
+  validated: true
+
+I48.0:
+  description: "Paroxysmal atrial fibrillation"
+  anatomical_location: "heart — atria"
+  causal_necessity: >
+    Irregular rhythm on ECG with absent P waves. CXR may show enlarged left
+    atrium or cardiomegaly.
+  visual_required_any: [normal_chest, cardiomegaly, left_atrial_enlargement]
+  visual_required_all: []
+  visual_supporting: [pulmonary_vascular_congestion]
+  alternative_diagnoses: [I48.2, I49.9]
+  fraud_differential: "I50.9"
+  minimum_causal_score: 0.3
+  voice_keywords: [palpitations, irregular_heartbeat, dizzy]
+  source: expert_validated
+  validated: true
+
+I51.7:
+  description: "Cardiomegaly"
+  anatomical_location: "heart — global enlargement"
+  causal_necessity: >
+    Cardiothoracic ratio greater than 0.5 on PA chest X-ray is required for
+    the radiographic diagnosis of cardiomegaly.
+  visual_required_any: [cardiomegaly, enlarged_cardiac_silhouette]
+  visual_required_all: []
+  visual_supporting: [pleural_effusions]
+  alternative_diagnoses: [I50.9, I42.0]
+  fraud_differential: "I50.9"
+  minimum_causal_score: 0.55
+  voice_keywords: [enlarged_heart, shortness_of_breath]
+  source: expert_validated
+  validated: true
+
+I63.9:
+  description: "Cerebral infarction, unspecified"
+  anatomical_location: "brain (note: CXR not primary for stroke)"
+  causal_necessity: >
+    Brain CT/MRI showing ischemic lesion is the gold standard. CXR may show
+    aspiration pneumonia as complication.
+  visual_required_any: [normal_chest, aspiration_pattern, cardiomegaly]
+  visual_required_all: []
+  visual_supporting: [atrial_fibrillation_evidence]
+  alternative_diagnoses: [I64, G45.9]
+  fraud_differential: "G45.9"
+  minimum_causal_score: 0.3
+  voice_keywords: [weakness_one_side, cant_speak, face_drooping]
+  source: expert_validated
+  validated: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MUSCULOSKELETAL
+# ─────────────────────────────────────────────────────────────────────────────
+
+S22.3:
+  description: "Fracture of one rib"
+  anatomical_location: "rib cage — single rib"
+  causal_necessity: >
+    Cortical disruption of a single rib must be visible on CXR or CT. Without
+    radiographic confirmation, this code lacks imaging support.
+  visual_required_any: [rib_fracture_visible, cortical_disruption, single_rib_fracture]
+  visual_required_all: []
+  visual_supporting: [pleural_effusion, pneumothorax]
+  alternative_diagnoses: [S22.4, S22.5]
+  fraud_differential: "S22.4"
+  minimum_causal_score: 0.6
+  voice_keywords: [rib_pain, cant_take_deep_breath, chest_injury, fell_on_chest]
+  source: expert_validated
+  validated: true
+
+S22.4:
+  description: "Multiple fractures of ribs"
+  anatomical_location: "rib cage — multiple ribs bilateral or unilateral"
+  causal_necessity: >
+    Multiple cortical disruptions of two or more ribs, or flail chest pattern,
+    must be radiographically confirmed. Coding multiple fractures for a single
+    rib fracture is upcoding.
+  visual_required_any: [multiple_rib_fractures, flail_chest_pattern, bilateral_rib_fractures]
+  visual_required_all: []
+  visual_supporting: [pneumothorax, hemothorax, pulmonary_contusion]
+  alternative_diagnoses: [S22.3, S22.5]
+  fraud_differential: "S22.3"
+  minimum_causal_score: 0.6
+  voice_keywords: [multiple_rib_pain, trauma, motor_vehicle_accident, flail_chest, cant_breathe_after_trauma]
+  source: expert_validated
+  validated: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GASTROINTESTINAL
+# ─────────────────────────────────────────────────────────────────────────────
+
+K25.0:
+  description: "Gastric ulcer, acute with hemorrhage"
+  anatomical_location: "stomach"
+  causal_necessity: >
+    Hematemesis or melena with confirmed drop in hemoglobin or endoscopic
+    finding of active bleeding. CXR may show free air under diaphragm if
+    perforation occurs.
+  visual_required_any: [free_air_under_diaphragm, normal_chest, no_acute_chest_findings]
+  visual_required_all: []
+  visual_supporting: [pneumoperitoneum]
+  alternative_diagnoses: [K25.9, K92.1, K26.0]
+  fraud_differential: "K25.9"
+  minimum_causal_score: 0.4
+  voice_keywords: [vomiting_blood, black_stool, stomach_pain, melena]
+  source: expert_validated
+  validated: true
+
+K25.9:
+  description: "Gastric ulcer, unspecified, without hemorrhage"
+  anatomical_location: "stomach"
+  causal_necessity: >
+    Endoscopic or imaging evidence of gastric ulcer without active bleeding or
+    perforation. Normal CXR (no free air).
+  visual_required_any: [normal_chest, no_free_air, no_acute_chest_findings]
+  visual_required_all: []
+  visual_supporting: []
+  alternative_diagnoses: [K25.0, K25.1]
+  fraud_differential: "K25.0"
+  minimum_causal_score: 0.4
+  voice_keywords: [stomach_pain, burning_stomach, antacids_help]
+  source: expert_validated
+  validated: true
+
+K35.2:
+  description: "Acute appendicitis with generalized peritonitis"
+  anatomical_location: "appendix — right lower quadrant"
+  causal_necessity: >
+    CT abdomen showing perforated appendix with free peritoneal air or fluid.
+    CXR may show free air under diaphragm.
+  visual_required_any: [free_air_under_diaphragm, normal_chest]
+  visual_required_all: []
+  visual_supporting: [pneumoperitoneum]
+  alternative_diagnoses: [K35.3, K37]
+  fraud_differential: "K35.3"
+  minimum_causal_score: 0.4
+  voice_keywords: [severe_right_lower_abdominal_pain, fever, rigid_abdomen]
+  source: expert_validated
+  validated: true
+
+K57.30:
+  description: "Diverticulosis of large intestine without hemorrhage"
+  anatomical_location: "colon"
+  causal_necessity: >
+    CT or colonoscopy evidence of diverticula without active bleeding. Normal
+    CXR typically.
+  visual_required_any: [normal_chest, no_acute_findings]
+  visual_required_all: []
+  visual_supporting: []
+  alternative_diagnoses: [K57.31, K57.32]
+  fraud_differential: "K57.32"
+  minimum_causal_score: 0.3
+  voice_keywords: [abdominal_cramps, change_in_bowel]
+  source: expert_validated
+  validated: true
+
+K70.30:
+  description: "Alcoholic cirrhosis without ascites"
+  anatomical_location: "liver"
+  causal_necessity: >
+    Imaging evidence of liver cirrhosis (nodular liver, portal hypertension)
+    without ascites on imaging.
+  visual_required_any: [normal_chest, elevated_right_hemidiaphragm, no_acute_chest_findings]
+  visual_required_all: []
+  visual_supporting: []
+  alternative_diagnoses: [K70.31, K74.60]
+  fraud_differential: "K70.31"
+  minimum_causal_score: 0.3
+  voice_keywords: [liver_disease, alcohol_history, jaundice]
+  source: expert_validated
+  validated: true
+
+K85.9:
+  description: "Acute pancreatitis, unspecified"
+  anatomical_location: "pancreas"
+  causal_necessity: >
+    Elevated lipase/amylase with CT evidence of pancreatic inflammation. CXR
+    may show left-sided pleural effusion.
+  visual_required_any: [left_pleural_effusion, normal_chest, left_sided_effusion]
+  visual_required_all: []
+  visual_supporting: [elevated_left_hemidiaphragm]
+  alternative_diagnoses: [K85.0, K85.1]
+  fraud_differential: "K85.0"
+  minimum_causal_score: 0.4
+  voice_keywords: [severe_epigastric_pain, radiating_back, nausea_vomiting]
+  source: expert_validated
+  validated: true
+
+K92.1:
+  description: "Melena"
+  anatomical_location: "gastrointestinal tract"
+  causal_necessity: >
+    Black tarry stools documented clinically. Normal CXR unless complication.
+    Hemoglobin drop typically present.
+  visual_required_any: [normal_chest, no_acute_chest_findings]
+  visual_required_all: []
+  visual_supporting: []
+  alternative_diagnoses: [K25.0, K26.0, K92.0]
+  fraud_differential: "K25.0"
+  minimum_causal_score: 0.3
+  voice_keywords: [black_stool, dark_stool]
+  source: expert_validated
+  validated: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INFECTIONS / SEPSIS
+# ─────────────────────────────────────────────────────────────────────────────
+
+A41.9:
+  description: "Sepsis, unspecified organism"
+  anatomical_location: "systemic — bloodstream"
+  causal_necessity: >
+    Documented infection source with organ dysfunction (SOFA score ≥2). CXR
+    may show pneumonia source or pulmonary edema from septic shock.
+  visual_required_any: [pulmonary_infiltrates, bilateral_infiltrates, normal_chest, cardiomegaly]
+  visual_required_all: []
+  visual_supporting: [pleural_effusions]
+  alternative_diagnoses: [A41.0, A41.1]
+  fraud_differential: "J18.9"
+  minimum_causal_score: 0.3
+  voice_keywords: [very_sick, confusion, high_fever, low_blood_pressure]
+  source: expert_validated
+  validated: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# METABOLIC / ENDOCRINE
+# ─────────────────────────────────────────────────────────────────────────────
+
+E11.9:
+  description: "Type 2 diabetes mellitus without complications"
+  anatomical_location: "systemic — endocrine"
+  causal_necessity: >
+    HbA1c ≥6.5% or fasting glucose ≥126 mg/dL documented. CXR typically
+    normal.
+  visual_required_any: [normal_chest, no_acute_findings]
+  visual_required_all: []
+  visual_supporting: []
+  alternative_diagnoses: [E11.65, E11.40]
+  fraud_differential: "E11.65"
+  minimum_causal_score: 0.3
+  voice_keywords: [diabetes, high_blood_sugar, insulin]
+  source: expert_validated
+  validated: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RENAL
+# ─────────────────────────────────────────────────────────────────────────────
+
+N18.3:
+  description: "Chronic kidney disease, stage 3"
+  anatomical_location: "kidneys — bilateral"
+  causal_necessity: >
+    GFR 30–59 mL/min documented on lab. CXR may show cardiomegaly from renal
+    hypertension.
+  visual_required_any: [normal_chest, cardiomegaly, pulmonary_edema]
+  visual_required_all: []
+  visual_supporting: [pleural_effusions]
+  alternative_diagnoses: [N18.2, N18.4]
+  fraud_differential: "N18.4"
+  minimum_causal_score: 0.3
+  voice_keywords: [kidney_disease, low_gfr, fatigue_ankles]
+  source: expert_validated
+  validated: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OBSERVATION / NO FINDING
+# ─────────────────────────────────────────────────────────────────────────────
+
+Z03.89:
+  description: "Encounter for observation for other suspected diseases"
+  anatomical_location: "systemic observation"
+  causal_necessity: >
+    Normal findings or ruled-out condition. No active disease confirmed. Used
+    for monitoring without diagnosis.
+  visual_required_any: [normal_chest, no_acute_findings, clear_lung_fields]
+  visual_required_all: []
+  visual_supporting: []
+  alternative_diagnoses: [J06.9]
+  fraud_differential: "J18.1"
+  minimum_causal_score: 0.5
+  voice_keywords: [feeling_fine, just_checking, normal, no_symptoms, no_acute, observation, monitoring, follow_up, no_findings, routine, no_active_disease, normal_exam]
+  source: expert_validated
+  validated: true

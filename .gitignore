@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Environment / secrets
+.env
+*.env.local
+
+# Logs
+logs/
+*.log
+backend/logs/
+
+# Data / models (large files)
+data/
+*.pth
+*.pt
+models/
+~/.cache/
+
+# Test outputs
+tests/tests/
+tests/validation_results*.json
+tests/sample_dataset/nih_cases.json
+tests/sample_dataset/*.jpg
+tests/sample_dataset/*.png
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Neo4j
+neo4j_data/
+neo4j_logs/

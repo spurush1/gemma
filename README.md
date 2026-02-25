@@ -1,135 +1,201 @@
-# ICD-10 MedGemma Multimodal Coding Validation System
+# ICD-10 MedGemma — Causal Audit System
 
-A multimodal ICD-10 coding validation system that detects billing fraud (upcoding/downcoding) by combining clinical notes with medical image analysis via the MedGemma API and a NetworkX-based knowledge graph.
+**96.7% accuracy on NIH ChestX-ray14** · Symbolic-Neural Hybrid · Kaggle MedGemma Impact Challenge
 
-## How It Works
+Detects ICD-10 billing fraud (upcoding/downcoding) by combining:
+- **MedGemma 4B-IT** (Google DeepMind) — clinical NLP + radiology image understanding
+- **CheXNet DenseNet-121** — NIH-trained chest X-ray pathology classifier
+- **LangGraph 5-node workflow** — agentic causal audit pipeline
+- **Medical Knowledge Graph** — Neo4j + CausalRequirement rules (39 codes)
+- **Three-Way Match** — Voice ↔ Image ↔ Billing Code cross-validation
 
-1. **Clinical note + X-ray image** submitted to system
-2. **MedGemma** extracts clinical entities (symptoms, image findings)
-3. **Context Graph** (NetworkX) traverses ICD-10 knowledge to find candidate codes
-4. **MedGemma** selects the best code from the graph-constrained candidate list
-5. **Fraud detection** compares submitted vs suggested code and flags mismatches
+---
+
+## Quick Start (Docker — Recommended)
+
+```bash
+# 1. Configure API keys
+cp .env.example .env
+# Edit .env — add MEDGEMMA_API_KEY and MEDGEMMA_ENDPOINT
+# (Leave blank to run in Mock Mode for development)
+
+# 2. Build and start all services
+chmod +x docker-run.sh
+./docker-run.sh
+
+# 3. Stop all services
+./docker-stop.sh
+```
+
+### Services
+
+| Service | URL | Notes |
+|---------|-----|-------|
+| Trust Dashboard (Streamlit) | http://localhost:9501 | Main UI — causal audit + history |
+| Backend API | http://localhost:8000 | FastAPI |
+| API Docs (Swagger) | http://localhost:8000/docs | Interactive API explorer |
+| HTML Frontend | http://localhost:80 | Lightweight single-page UI |
+| Neo4j Browser | http://localhost:7476 | Graph DB — `neo4j` / `medgemma123` |
+
+---
+
+## Architecture
+
+```
+Patient Voice (.wav)
+  └─► [Node 1: VoiceAnalyst]
+      google/medasr medical-grade ASR → voice_symptoms list
+
+Chest X-Ray Image
+  └─► [Node 2: VisualAnalyst]           ← Two-pass fix prevents text bias
+      Pass 1: CheXNet DenseNet-121       → standardised NIH labels (locked)
+              MedGemma 4B-IT image-only  → free-form findings
+              Merge via RadLex synonyms  → expanded_findings
+      Pass 2: MedGemma text-only         → severity, body_system
+
+Clinical Note Text ─────────────────────────────────┐
+                                                    ▼
+[Node 3: KnowledgeRetriever]
+  Looks up CausalRequirement for submitted ICD-10 code
+  (39 codes × AND/OR visual rules, fraud_differential, voice_keywords)
+
+[Node 4: CausalAuditor] — Three-Way Match
+  ┌──────────────────────────────────────────────┐
+  │  Image  ↔ Code   (CausalRequirement)         │
+  │  Voice  ↔ Image  (symptom/finding overlap)   │
+  │  Voice  ↔ Code   (voice_keyword matching)    │
+  └──────────────────────────────────────────────┘
+
+[Node 5: CounterfactualVerifier]  (only if fraud flagged)
+  MedGemma: "If patient had {alt_code}, is {code} still needed?"
+
+VERDICT: FRAUD / CLEAN + Causal Score + Financial Impact + Litigation Risk
+```
+
+---
 
 ## Project Structure
 
 ```
 icd10-medgemma/
 ├── backend/
-│   ├── app.py                  # FastAPI main app
-│   ├── medgemma_client.py      # MedGemma API calls
-│   ├── context_graph.py        # ICD-10 knowledge graph
-│   ├── icd10_data.py           # ICD-10 codes + rules
+│   ├── app.py                  # FastAPI — /causal-audit, /analyze, /compare, /health
+│   ├── agents.py               # LangGraph 5-node StateGraph workflow
+│   ├── medgemma_client.py      # MedGemma 4B-IT API (featherless-ai HuggingFace router)
+│   ├── chexnet_client.py       # CheXNet DenseNet-121 (torchxrayvision, NIH weights)
+│   ├── audio_client.py         # Voice ASR (google/medasr)
+│   ├── context_graph.py        # ICD-10 context graph (Neo4j primary / NetworkX fallback)
+│   ├── graph_db.py             # Neo4j Cypher queries + graph seeding
+│   ├── icd10_data.py           # CMS ICD-10-CM data + CLINICAL_AUGMENTATION (39 codes)
+│   ├── causal_rules.yaml       # CausalRequirement rules per code
+│   ├── knowledge_engine.py     # Shim → backend/knowledge/ package
+│   ├── knowledge/
+│   │   ├── models.py           # CausalRequirement dataclass
+│   │   ├── evaluator.py        # Causal score evaluation logic
+│   │   ├── litigation.py       # Litigation risk scoring
+│   │   └── graph.py            # MedicalKnowledgeGraph
 │   └── requirements.txt
 ├── frontend/
-│   └── index.html              # Single page UI
-├── data/                       # Test fixtures and datasets
+│   ├── streamlit_app.py        # Trust Dashboard (port 9501)
+│   └── index.html              # Lightweight HTML UI (port 80)
 ├── tests/
-│   └── test_cases.py           # 5 validation test cases
-├── logs/                       # API call logs
-├── .env.example                # Environment template
-└── docker-compose.yml          # Docker deployment
+│   ├── sample_dataset/
+│   │   ├── nih_images/         # NIH ChestX-ray14 subset
+│   │   ├── nih_synthetic_notes.json
+│   │   └── generate_nih_notes.py
+│   ├── validate_nih_synthetic.py
+│   └── validate_100_cases.py
+├── Dockerfile                  # Backend + Streamlit image
+├── Dockerfile.frontend         # Nginx HTML frontend image
+├── docker-compose.yml          # All 4 services
+├── docker-run.sh               # One-command startup
+├── docker-stop.sh              # One-command shutdown
+└── .env.example                # Environment template
 ```
 
-## Setup (Without Docker)
+---
 
-```bash
-# 1. Install dependencies
-pip install -r backend/requirements.txt
+## Trust Dashboard Features
 
-# 2. Configure API keys
-cp .env.example .env
-# Edit .env and add your MedGemma API key and endpoint
+- **Live Demo tab** — 5 preset NIH cases with paired X-rays; click to auto-run full audit
+- **How It Works tab** — architecture diagram + tech stack comparison
+- **Validation Results tab** — accuracy progression (65.6% → 96.7%), root cause analysis
+- **Audit History tab** — browse all runs with image, full agent trace, three-way match, and verdict; navigate with Prev / Next
 
-# 3. Start backend
-cd backend && uvicorn app:app --reload
-
-# 4. Open frontend
-open frontend/index.html
-
-# 5. Run tests (requires backend running)
-python tests/test_cases.py
-
-# 6. Print test cases without API
-python tests/test_cases.py --print-cases
-```
-
-## Run With Docker (Recommended)
-
-```bash
-# 1. Configure API keys
-cp .env.example .env
-# Edit .env and add your MedGemma API key
-
-# 2. Build and start
-chmod +x docker-run.sh
-./docker-run.sh
-
-# 3. Open browser
-open http://localhost
-
-# 4. Stop
-./docker-stop.sh
-```
-
-## Run Edge Version (Raspberry Pi / Low RAM)
-
-```bash
-chmod +x edge-run.sh
-./edge-run.sh
-```
+---
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/analyze` | Full multimodal coding analysis |
-| GET | `/validate/{code}` | Get code details |
-| POST | `/compare` | Compare two codes |
+| POST | `/causal-audit` | 5-node LangGraph causal audit (main endpoint) |
+| POST | `/analyze` | Legacy multimodal analysis |
+| GET | `/validate/{code}` | Code details from knowledge graph |
+| POST | `/compare` | Compare two ICD-10 codes |
 | GET | `/codes/search?q=` | Search codes by keyword |
-| GET | `/health` | Health check |
+| GET | `/health` | Health check — reports graph backend + mock mode |
 
-### Example `/analyze` request (curl)
+### Example causal audit (curl)
 
 ```bash
-curl -X POST http://localhost:8000/analyze \
-  -F "clinical_note=Patient presents with fever and productive cough" \
-  -F "existing_code=J06.9" \
+curl -X POST http://localhost:8000/causal-audit \
+  -F "clinical_note=71M with fever, productive cough, right lower lobe consolidation" \
+  -F "existing_code=J93.1" \
   -F "image=@chest_xray.jpg"
 ```
 
-## Test Cases
+---
 
-| Case | Scenario | Submitted | Correct | Impact |
-|------|----------|-----------|---------|--------|
-| CASE_01 | Downcoding | J06.9 (Cold) | J18.1 (Lobar Pneumonia) | $2,220 loss |
-| CASE_02 | Upcoding | J45.50 (Severe Asthma) | J45.20 (Mild Asthma) | $2,210 fraud |
-| CASE_03 | Correct | I50.0 (CHF) | I50.0 (CHF) | $0 |
-| CASE_04 | Unrelated | J18.9 (Pneumonia) | I50.9 (Heart Failure) | $7,500 gap |
-| CASE_05 | Text Only | K25.9 (Ulcer, no bleed) | K25.0 (Hemorrhagic Ulcer) | $7,300 loss |
+## Local Development (Without Docker)
 
-## Key Features
+```bash
+# 1. Install dependencies
+pip install -r backend/requirements.txt
 
-- **Multimodal**: Processes clinical notes + X-ray images together
-- **Context Graph**: Prevents hallucinated codes; constrains AI to valid ICD-10 space
-- **Fraud Detection**: Identifies upcoding, downcoding, and unrelated codes
-- **Financial Impact**: Calculates dollar difference between submitted and correct codes
-- **Explainable**: Full clinical reasoning for every suggestion
-- **Mock Mode**: Works without API keys for development/testing
+# 2. Configure environment
+cp .env.example .env
 
-## Why MedGemma vs General LLMs
+# 3. Start Neo4j (optional — falls back to NetworkX if unavailable)
+docker run -d -p 7476:7474 -p 7689:7687 \
+  -e NEO4J_AUTH=neo4j/medgemma123 \
+  neo4j:5.18-community
 
-General LLMs (GPT-4, Claude) can read clinical text but **cannot clinically interpret X-rays**. MedGemma is specifically trained on medical images and understands findings like:
-- Lobar consolidation vs ground-glass opacity
-- Cardiomegaly (cardiothoracic ratio)
-- Kerley B lines (heart failure)
-- Air bronchograms (pneumonia)
+# 4. Start backend
+cd backend && uvicorn app:app --port 8000 --reload
 
-This multimodal capability is what enables detecting mismatches between text and image — the core fraud detection mechanism.
+# 5. Start Trust Dashboard
+streamlit run frontend/streamlit_app.py --server.port 9501
 
-## Data Sources
+# 6. Run NIH validation
+python tests/validate_nih_synthetic.py --limit 20
+```
 
-- **Synthetic**: Generated immediately via `data/generate_synthetic_cases.py`
-- **MTSamples**: Free clinical notes from mtsamples.com
-- **NIH Chest X-Ray**: 112k labeled chest X-rays (nihcc.app.box.com)
-- **CheXpert**: Stanford paired reports + images (registration required)
-- **MIMIC-IV**: Real ICU data with ground-truth ICD codes (physionet.org, 3-5 days)
+---
+
+## Validation Results
+
+| System Version | Accuracy | False Positives |
+|---|---|---|
+| Baseline (MedGemma text-only) | 65.6% | 21 |
+| + Tier 1: RadLex Normalization | 80.3% | 12 |
+| + Tier 2: CheXNet Ensemble | **96.7%** | **2** |
+
+Validated on 61 legitimate NIH ChestX-ray14 cases (synthetic clinical notes).
+
+---
+
+## Mock Mode
+
+Leave `MEDGEMMA_API_KEY` and `MEDGEMMA_ENDPOINT` unset in `.env` to run in Mock Mode.
+The system uses rule-based stubs — no API calls, no cost. All UI features work.
+A warning banner is shown in the Trust Dashboard when mock mode is active.
+
+---
+
+## Key Design Decisions
+
+**Two-Pass Multimodal Fix** — MedGemma ignores images when clinical text is present (text bias). Fix: Pass 1 sends image only → locks findings. Pass 2 sends text only → extracts symptoms. Confirmed: pneumothorax X-ray + misleading note → Pass 1 correctly finds `right_sided_pneumothorax`.
+
+**Symbolic-Neural Hybrid** — Neural models (MedGemma, CheXNet) handle perception. Symbolic rules (`CausalRequirement` per code) handle reasoning. No LLM can hallucinate a passing causal score.
+
+**Neo4j Knowledge Graph** — Seeded from CMS FY2024 ICD-10-CM data. Used for candidate code traversal, excludes1 validation, hierarchy queries, and financial gap calculation.
